@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="180" viewBox="0 0 720 180" role="img" aria-label="내 번호 당첨 이력 확인">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#1769aa"/>
+      <stop offset="1" stop-color="#0d3f73"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="180" rx="24" fill="url(#bg)"/>
+  <circle cx="92" cy="90" r="47" fill="#fff" opacity=".16"/>
+  <path d="M68 90l16 16 31-35" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="165" y="82" fill="#fff" font-family="Arial, sans-serif" font-size="30" font-weight="700">내 번호 당첨 이력 확인</text>
+  <text x="165" y="122" fill="#d9ecff" font-family="Arial, sans-serif" font-size="21">번호 6개를 입력하고 과거 당첨 회차 확인</text>
+</svg>
