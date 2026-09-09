@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>로또 번호 추천 프로그램</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; }
+    body { max-width: 760px; margin: 0 auto; padding: 24px 16px; line-height: 1.5; color: #222; }
+    h1 { font-size: 1.5rem; }
+    .panel { padding: 16px; margin: 16px 0; border: 1px solid #ddd; border-radius: 12px; }
+    label { display: block; margin: 8px 0; font-weight: 600; }
+    input, button { box-sizing: border-box; padding: 10px; border: 1px solid #bbb; border-radius: 8px; font: inherit; }
+    input { width: 100%; margin-top: 4px; }
+    button { cursor: pointer; background: #1769aa; color: white; border: 0; margin: 6px 4px 0 0; }
+    button.secondary { background: #666; }
+    #status { white-space: pre-wrap; color: #555; }
+    .recommendation { padding: 12px; margin: 8px 0; background: #f3f7fb; border-radius: 8px; }
+    .match-result { padding: 12px; margin-top: 10px; background: #f7f7f7; border-radius: 8px; white-space: pre-wrap; }
+    .ball { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; margin-right: 5px; border-radius: 50%; color: #fff; font-weight: 700; }
+    .b1 { background: #e5a100; } .b2 { background: #3986d1; } .b3 { background: #df6060; }
+    .b4 { background: #777; } .b5 { background: #45a66b; }
+    small { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>로또 번호 추천 프로그램</h1>
+  <p>공식 당첨번호를 저장한 뒤 조건에 맞는 추천번호 5개를 생성합니다.</p>
+
+  <section class="panel">
+    <button id="refresh">새 회차 자동 확인</button>
+    <button id="clear" class="secondary">저장 데이터 초기화</button>
+    <p id="status">저장된 회차를 확인하는 중입니다.</p>
+    <p id="latestDraw"></p>
+  </section>
+
+  <section class="panel">
+    <h2>내 번호 당첨 이력 확인</h2>
+    <p>번호 6개를 입력하면 저장된 1등·2등 당첨 이력을 확인합니다.</p>
+    <label for="checkNumbers">확인할 번호 6개</label>
+    <input id="checkNumbers" placeholder="예: 3, 11, 17, 25, 34, 42">
+    <button id="check">당첨 이력 확인</button>
+    <div id="matchResult" class="match-result" aria-live="polite"></div>
+  </section>
+
+  <section class="panel">
+    <button id="generate">추천번호 5개 추출하기</button>
+    <div id="results" aria-live="polite"></div>
+    <small>저장된 역대 1등 조합과 같은 6개 번호 조합은 추천에서 제외합니다.</small>
+  </section>
+
+  <script>
+    const STORAGE_KEY = "lotto-recommender-results-v1";
+    const state = loadState();
+    const $ = (id) => document.getElementById(id);
+
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+        return saved && typeof saved === "object" && saved.draws ? saved : { draws: {} };
+      } catch (error) {
+        console.error("저장 데이터를 읽지 못했습니다.", error);
+        return { draws: {} };
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function parseNumbers(value) {
+      const numbers = value.split(/[,\s]+/).filter(Boolean).map(Number);
+      if (numbers.length !== 6 || numbers.some((n) => !Number.isInteger(n) || n < 1 || n > 45)
+        || new Set(numbers).size !== 6) {
+        throw new Error("1부터 45 사이의 서로 다른 번호 6개를 입력해 주세요.");
+      }
+      return numbers.sort((a, b) => a - b);
+    }
+
+    function getDrawInfo(numbersOrDraw) {
+      return Array.isArray(numbersOrDraw)
+        ? { numbers: numbersOrDraw, bonus: null }
+        : numbersOrDraw;
+    }
+
+    function updateStatus(message) {
+      const rounds = Object.keys(state.draws).map(Number).sort((a, b) => b - a);
+      $("status").textContent = `${message}\n저장된 회차: ${rounds.length ? rounds.join(", ") : "없음"}`;
+      if (rounds.length) {
+        const latest = rounds[0];
+        const draw = getDrawInfo(state.draws[latest]);
+        $("latestDraw").textContent = `${latest}회 당첨번호: ${draw.numbers.join(", ")} (보너스 ${draw.bonus ?? "-"})`;
+      } else {
+        $("latestDraw").textContent = "";
+      }
+    }
+
+    async function updateNewDraws() {
+      try {
+        const response = await fetch(`lotto-data.json?updated=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) throw new Error("누적 데이터 파일을 불러오지 못했습니다.");
+        const published = await response.json();
+        Object.assign(state.draws, published.draws || {});
+        saveState();
+        updateStatus("GitHub Actions가 갱신한 누적 데이터를 불러왔습니다.");
+      } catch (error) {
+        updateStatus("누적 데이터 확인에 실패했습니다. 브라우저에 저장된 데이터를 사용합니다.");
+        console.error(error);
+      }
+    }
+
+    $("refresh").addEventListener("click", async () => {
+      await updateNewDraws();
+    });
+
+    $("clear").addEventListener("click", () => {
+      localStorage.removeItem(STORAGE_KEY);
+      Object.keys(state.draws).forEach((round) => delete state.draws[round]);
+      updateStatus("저장 데이터를 초기화했습니다.");
+    });
+
+    $("check").addEventListener("click", () => {
+      try {
+        const selected = parseNumbers($("checkNumbers").value);
+        const first = [];
+        const second = [];
+        Object.entries(state.draws).forEach(([round, stored]) => {
+          const draw = getDrawInfo(stored);
+          const matched = selected.filter((number) => draw.numbers.includes(number)).length;
+          if (matched === 6) first.push(`${round}회 1등`);
+          else if (matched === 5 && draw.bonus !== null && selected.includes(draw.bonus)) {
+            second.push(`${round}회 2등`);
+          }
+        });
+        const lines = [];
+        if (first.length) lines.push(`1등 당첨 이력: ${first.join(", ")}`);
+        if (second.length) lines.push(`2등 당첨 이력: ${second.join(", ")}`);
+        $("matchResult").textContent = lines.length ? lines.join("\n") : "당첨 내역이 없습니다.";
+      } catch (error) {
+        $("matchResult").textContent = error.message;
+      }
+    });
+
+    function randomInt(max) {
+      const buffer = new Uint32Array(1);
+      crypto.getRandomValues(buffer);
+      return buffer[0] % max;
+    }
+
+    function combinations() {
+      const result = [];
+      const recentMissing = getRecentMissingNumbers();
+      const winningKeys = getWinningKeys();
+      while (result.length < 5) {
+        const candidate = Array.from({ length: 45 }, (_, i) => i + 1)
+          .sort(() => randomInt(2) - 1).slice(0, 6).sort((a, b) => a - b);
+        if (isValid(candidate, recentMissing)
+          && !winningKeys.has(candidate.join(","))
+          && !result.some((item) => item.join(",") === candidate.join(","))) result.push(candidate);
+      }
+      return result;
+    }
+
+    function getWinningKeys() {
+      return new Set(Object.values(state.draws).map((draw) => getDrawInfo(draw).numbers.join(",")));
+    }
+
+    function getRecentMissingNumbers() {
+      const rounds = Object.keys(state.draws).map(Number).sort((a, b) => b - a).slice(0, 10);
+      const appeared = new Set(rounds.flatMap((round) => getDrawInfo(state.draws[round]).numbers));
+      return new Set(Array.from({ length: 45 }, (_, index) => index + 1)
+        .filter((number) => !appeared.has(number)));
+    }
+
+    function isValid(numbers, recentMissing) {
+      const odd = numbers.filter((n) => n % 2).length;
+      const sum = numbers.reduce((total, n) => total + n, 0);
+      const endings = numbers.reduce((counts, n) => {
+        const end = n % 10;
+        counts[end] = (counts[end] || 0) + 1;
+        return counts;
+      }, {});
+      const sections = numbers.reduce((counts, n) => {
+        const section = n < 10 ? 0 : Math.floor(n / 10);
+        counts[section] = (counts[section] || 0) + 1;
+        return counts;
+      }, {});
+      const differences = new Set();
+      for (let i = 0; i < numbers.length; i += 1)
+        for (let j = i + 1; j < numbers.length; j += 1) differences.add(numbers[j] - numbers[i]);
+      return (odd === 2 || odd === 3 || odd === 4)
+        && sum >= 100 && sum <= 170
+        && numbers.some((number) => recentMissing.has(number))
+        && Object.values(endings).every((count) => count <= 2)
+        && Object.values(sections).every((count) => count <= 3)
+        && differences.size >= 7;
+    }
+
+    $("generate").addEventListener("click", () => {
+      const rounds = Object.keys(state.draws).length;
+      if (!rounds) {
+        updateStatus("최신 당첨번호를 확인하지 못해 누적 제외 없이 추천번호를 생성합니다.");
+      }
+      $("results").innerHTML = combinations().map((numbers, index) =>
+        `<div class="recommendation"><strong>${index + 1}번</strong> ${
+          numbers.map((n) => `<span class="ball b${Math.min(5, Math.ceil(n / 10))}">${n}</span>`).join("")
+        }<small> 합계 ${numbers.reduce((a, b) => a + b, 0)}</small></div>`
+      ).join("");
+    });
+
+    updateStatus("누적 데이터를 불러오는 중입니다.");
+    updateNewDraws();
+  </script>
+</body>
+</html>
